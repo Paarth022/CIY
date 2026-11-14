@@ -56,3 +56,12 @@ LAUNCH_CHECKLIST.md
 # OS files
 .DS_Store
 Thumbs.db
+
+# Additional local credentials, backups and temporary output
+*.p12
+*.pfx
+*.db.*
+*.dump
+*.bak
+.npmrc
+scratch/

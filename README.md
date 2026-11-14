@@ -34,7 +34,7 @@ CIY (Craft It Yourself) is a web application for generating, debugging, and upda
 - **Plugin Version Updater (`/update`, `/api/update`):**
   - Analyzes uploaded plugin source archives and updates API usage and metadata for newer Paper/Spigot releases.
 - **Maven Compiler Endpoint (`/api/compile`):**
-  - Sanitizes `pom.xml` declarations to strip non-whitelisted Maven plugins and execution tags, writes source files to an isolated temporary build directory, invokes `mvn clean package`, and returns the compiled `.jar` encoded in Base64.
+  - Sanitizes `pom.xml` declarations to strip non-whitelisted Maven plugins and execution tags, writes source files to a temporary build directory, invokes `mvn clean package`, and returns the compiled `.jar` encoded in Base64.
 - **Explore & Community Catalog (`/explore`, `/marketplace`, `/api/plugins`):**
   - Displays sample plugins (`lib/examplePlugins.js`) and supports Supabase-backed community plugin listings and voting (`/api/plugins/[id]/vote`).
 - **Session & Credit Entitlements (`/pricing`, `/account`, `/api/session/*`, `/api/stripe/*`):**
@@ -52,7 +52,7 @@ CIY (Craft It Yourself) is a web application for generating, debugging, and upda
 ### 1. Install Dependencies
 
 ```bash
-npm install
+npm ci
 ```
 
 ### 2. Configure Environment Variables
@@ -90,8 +90,8 @@ npm start
 
 | Variable | Required | Description |
 | :--- | :--- | :--- |
-| `NEXT_PUBLIC_SITE_URL` | Optional (defaults to `http://localhost:3000` in dev) | Canonical base URL used for metadata, sitemap, and Stripe redirects |
-| `CIY_SESSION_SECRET` | **Required in production** (dev fallback exists) | Secret key (>= 32 chars) used to HMAC-sign session and credit tokens |
+| `NEXT_PUBLIC_SITE_URL` | Optional (set explicitly for your deployment) | Canonical base URL used for metadata, sitemap, and Stripe redirects |
+| `CIY_SESSION_SECRET` | **Required for session routes in all environments** | Secret key (>= 32 chars) used to HMAC-sign session and credit tokens |
 | `GEMINI_API_KEY` | At least one AI key required for generation | Google Gemini API key for server-side generation routes |
 | `ANTHROPIC_API_KEY` | Optional (required for Claude / Hybrid) | Anthropic API key for Claude models and Hybrid Architect step |
 | `OPENAI_API_KEY` | Optional (required for OpenAI provider) | OpenAI API key for GPT models |
@@ -127,7 +127,7 @@ npm start
 - **Root Directory:** `./`
 - **Build Command:** `next build` (or default `npm run build`)
 - **Output Directory:** `.next` (Next.js default)
-- **Install Command:** `npm install`
+- **Install Command:** `npm ci`
 - **Environment Variables:** Configure the required variables from the table above in the Vercel project settings before building.
 
 ### Important Limitation: Maven Compilation (`/api/compile`)
@@ -135,7 +135,7 @@ npm start
 - The `/api/compile` route writes generated Java files to `scratch/builds/<uuid>` and spawns `mvn clean package` via Node's `child_process.exec`.
 - **Vercel serverless functions do not provide a Java JDK or Apache Maven (`mvn`)**, and the deployment filesystem outside `/tmp` is read-only.
 - As a result, **in-browser `.jar` compilation will not run on a standard Vercel deployment** unless `/api/compile` is adapted to delegate builds to an external Java/Maven build service or containerized worker (e.g., Railway, Fly.io, Cloud Run, or a dedicated build runner).
-- Source code generation (`/create`), debugging (`/debug`), version updating (`/update`), code inspection, and `.zip` project downloads work within standard Node.js serverless environments once AI provider keys and `CIY_SESSION_SECRET` are configured.
+- Source code generation (`/create`), debugging (`/debug`), version updating (`/update`), code inspection, and `.zip` project downloads are intended for Node.js hosting. Configure their integrations and validate them on the selected deployment; this repository does not establish that they have been deployed successfully.
 
 ### Additional Development Limitations
 

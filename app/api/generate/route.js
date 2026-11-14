@@ -1,148 +1,144 @@
-import { getSystemPrompt } from '@/lib/systemPrompt';
-import OpenAI from 'openai';
-import { GoogleGenerativeAI } from '@google/generative-ai';
-import Anthropic from '@anthropic-ai/sdk';
-import { AI_PROVIDERS } from '@/lib/providers';
+import { getGenerationPrompt, formatZipContext } from '@/lib/masterPrompts';
+import { AI_PROVIDERS, ALLOWED_VERSIONS, ALLOWED_COMPLEXITY } from '@/lib/providers';
+import { sanitizeZipFiles } from '@/lib/server/zipSanitizer';
+import { callAI, pickKeyFor } from '@/lib/server/aiClient';
+import { limit } from '@/lib/server/rateLimit';
+import { applyIPGuard } from '@/lib/server/routeGuard';
+import { captureServerError } from '@/lib/server/sentry';
+import {
+  verifyToken, signToken, spendCredit, availableCredits,
+  toClientUsage, COMPLEXITY_TO_TIER,
+} from '@/lib/server/session';
+import { applyWatermarks } from '@/lib/server/watermarker';
+import { parseGeneratedCode } from '@/lib/server/parseGeneratedCode';
 
-// Simple in-memory rate limiting: 3 requests per IP per minute
-// Note: In production on Vercel Edge this limits per edge node, which is fine for MVP.
-const rateLimits = new Map();
-
-function checkRateLimit(ip) {
-  const now = Date.now();
-  const minuteAgo = now - 60000;
-  
-  if (!rateLimits.has(ip)) {
-    rateLimits.set(ip, [now]);
-    return true;
-  }
-  
-  const requests = rateLimits.get(ip).filter(time => time > minuteAgo);
-  requests.push(now);
-  rateLimits.set(ip, requests);
-  
-  return requests.length <= 3;
-}
-
-function parseGeneratedCode(text) {
-  const files = {};
-  // Match === filename === \n content \n === END ===
-  const blockRegex = /===\s*(.*?)\s*===[\r\n]+([\s\S]*?)===\s*END\s*===/g;
-  let match;
-  let pluginName = "GeneratedPlugin";
-
-  while ((match = blockRegex.exec(text)) !== null) {
-    const fileName = match[1].trim();
-    // Sometimes the model wraps the code block in markdown ```java ... ```
-    let content = match[2].trim();
-    if (content.startsWith('```')) {
-      const firstNewline = content.indexOf('\n');
-      const lastBackticks = content.lastIndexOf('```');
-      if (firstNewline !== -1 && lastBackticks !== -1) {
-        content = content.substring(firstNewline + 1, lastBackticks).trim();
-      }
-    }
-    
-    files[fileName] = content;
-    
-    if (fileName.endsWith('.java')) {
-      const nameMatch = content.match(/public\s+(?:final\s+)?class\s+(\w+)/);
-      if (nameMatch) {
-        pluginName = nameMatch[1];
-      }
-    }
-  }
-  return { files, pluginName };
-}
+// ── Request limits ──
+const MAX_DESCRIPTION_LEN = 5000;   // client caps at 2000; server guards.
+const ALLOWED_VERSIONS_SET = new Set(ALLOWED_VERSIONS);
+const ALLOWED_COMPLEXITY_SET = new Set(ALLOWED_COMPLEXITY);
 
 export async function POST(req) {
   try {
-    const ip = req.headers.get('x-forwarded-for') || 'anonymous';
-    
-    if (!checkRateLimit(ip)) {
+    const guard = await applyIPGuard(req, 'generate:ip', { max: 3, windowMs: 60_000 });
+    if (guard) return guard;
+
+    let body;
+    try { body = await req.json(); }
+    catch { return Response.json({ success: false, error: 'Invalid JSON body.' }, { status: 400 }); }
+    if (!body || typeof body !== 'object') {
+      return Response.json({ success: false, error: 'Invalid request body.' }, { status: 400 });
+    }
+
+    const { description, version, complexity, provider, token, files: zipFiles } = body;
+
+    if (typeof description !== 'string' || typeof provider !== 'string' || typeof token !== 'string') {
+      return Response.json({ success: false, error: 'Missing or invalid required fields.' }, { status: 400 });
+    }
+    const trimmedDesc = description.trim();
+    if (!trimmedDesc) {
+      return Response.json({ success: false, error: 'Description is required.' }, { status: 400 });
+    }
+    if (trimmedDesc.length > MAX_DESCRIPTION_LEN) {
+      return Response.json({ success: false, error: 'Description is too long.' }, { status: 400 });
+    }
+
+    // Verify the signed session token — authoritative source of credits.
+    let payload;
+    try { payload = verifyToken(token); }
+    catch {
       return Response.json(
-        { success: false, error: 'Please wait before generating again. (Max 3/minute)' },
-        { status: 429 }
+        { success: false, error: 'Your session expired — please sign in again.', code: 'session_expired' },
+        { status: 401 }
       );
     }
 
-    const { description, version, complexity, provider, apiKey } = await req.json();
+    // Per-user rate limits (stacked on per-IP) — stops session-token sharing.
+    const userMin  = await limit('generate:uid:min',  payload.uid, { windowMs: 60_000,    max: 5  });
+    if (!userMin.ok)  return Response.json({ success: false, error: 'Slow down — 5 generations per minute max.' }, { status: 429 });
+    const userHour = await limit('generate:uid:hour', payload.uid, { windowMs: 3_600_000, max: 60 });
+    if (!userHour.ok) return Response.json({ success: false, error: 'Hourly generation limit reached.' }, { status: 429 });
 
-    if (!description || !provider || !apiKey) {
+    const safeVersion    = ALLOWED_VERSIONS_SET.has(version)      ? version    : '1.21.4';
+    const safeComplexity = ALLOWED_COMPLEXITY_SET.has(complexity) ? complexity : 'Medium';
+    const tier           = COMPLEXITY_TO_TIER[safeComplexity] || 'normal';
+
+    if (availableCredits(payload, tier) <= 0) {
       return Response.json(
-        { success: false, error: 'Missing required fields: description, provider, or apiKey' },
-        { status: 400 }
+        { success: false, error: `No ${tier} credits remaining. Upgrade your plan or buy a pack.`, code: 'no_credits' },
+        { status: 402 }
       );
     }
 
-    const systemPrompt = getSystemPrompt(version || '1.21.4', complexity || 'Medium', description);
-    
-    let generatedText = '';
     const provConfig = AI_PROVIDERS.find(p => p.id === provider);
-    
     if (!provConfig) {
-      return Response.json({ success: false, error: 'Invalid AI provider selected' }, { status: 400 });
+      return Response.json({ success: false, error: 'Invalid AI provider selected.' }, { status: 400 });
     }
 
-    // --- CALL GEMINI ---
-    if (provider === 'gemini') {
-      const genAI = new GoogleGenerativeAI(apiKey);
-      const model = genAI.getGenerativeModel({ 
-        model: provConfig.model,
-        systemInstruction: systemPrompt
-      });
-      const result = await model.generateContent(description);
-      generatedText = result.response.text();
-    }
-    
-    // --- CALL CLAUDE ---
-    else if (provider === 'claude') {
-      const anthropic = new Anthropic({ apiKey: apiKey });
-      const response = await anthropic.messages.create({
-        model: provConfig.model,
-        max_tokens: 4000,
-        system: systemPrompt,
-        messages: [{ role: 'user', content: 'Generate the requested plugin.' }]
-      });
-      generatedText = response.content[0].text;
-    }
-    
-    // --- CALL OPENAI ---
-    else if (provider === 'openai') {
-      const openai = new OpenAI({ apiKey: apiKey });
-      const response = await openai.chat.completions.create({
-        model: provConfig.model,
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: 'Generate the requested plugin.' }
-        ]
-      });
-      generatedText = response.choices[0].message.content;
+    const key = pickKeyFor(provider);
+    if (!key) {
+      return Response.json(
+        { success: false, error: 'This AI provider is not available right now. Try another.' },
+        { status: 503 }
+      );
     }
 
-    // PARSE RESPONSE
-    const { files, pluginName } = parseGeneratedCode(generatedText);
-    
+    let cleanZip = null;
+    try {
+      cleanZip = sanitizeZipFiles(zipFiles);
+    } catch (err) {
+      if (err.message && err.message.startsWith('INVALID_ZIP:')) {
+        return Response.json({ success: false, error: err.message.replace('INVALID_ZIP: ', '') }, { status: 400 });
+      }
+    }
+    const zipContext  = cleanZip ? formatZipContext(cleanZip) : '';
+    const { cached: systemCached, dynamic: systemDynamic } =
+      getGenerationPrompt(safeVersion, safeComplexity, trimmedDesc, zipContext);
+
+    const aiResult = await callAI({
+      provider,
+      providerKey:  key,
+      tier,
+      systemCached,
+      systemDynamic,
+      userMessage:  'Generate the requested plugin.',
+    });
+    const generatedText = aiResult.text;
+
+    let { files, pluginName } = parseGeneratedCode(generatedText || '');
+
     if (Object.keys(files).length === 0) {
-      return Response.json({ 
-        success: false, 
-        error: "AI did not generate files in the expected format. Please try again.",
-        raw: generatedText // useful for debugging
-      }, { status: 500 });
+      // No credit spent if the model fails to produce usable output.
+      return Response.json(
+        { success: false, error: 'AI did not generate files in the expected format. Please try again.' },
+        { status: 502 }
+      );
     }
+
+    // Apply watermarks for non-Master plan users
+    files = applyWatermarks(files, payload.plan);
+
+    // Spend exactly one credit for the tier used, re-sign, and return.
+    const nextPayload = spendCredit(payload, tier);
+    const newToken    = signToken(nextPayload);
 
     return Response.json({
       success: true,
-      data: {
-        files,
-        pluginName
-      }
+      data:    { files, pluginName },
+      token:   newToken,
+      usage:   toClientUsage(nextPayload),
+      meta: {
+        provider:    aiResult.provider,
+        model:       aiResult.model,
+        rounds:      aiResult.rounds,
+        truncated:   aiResult.truncated,
+      },
     });
-    
+
   } catch (error) {
-    console.error("Generate API Error:", error);
+    captureServerError(error, { where: 'generate:post' });
+    // Return a generic error — don't leak provider-specific status codes.
     return Response.json(
-      { success: false, error: error?.message || 'An error occurred during generation' },
+      { success: false, error: 'Generation failed. Please try again.' },
       { status: 500 }
     );
   }

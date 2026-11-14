@@ -4,6 +4,171 @@
 
 @layer base {
   body {
-    @apply bg-background text-white antialiased font-body;
+    @apply bg-[#030307] text-[#f4f4f7] antialiased;
+    font-family: var(--font-body), sans-serif;
+    background-image: 
+      radial-gradient(ellipse 80% 50% at 50% -10%, rgba(34, 197, 94, 0.08), transparent),
+      radial-gradient(ellipse 60% 40% at 50% 60%, rgba(168, 85, 247, 0.04), transparent);
+    background-attachment: fixed;
   }
+  h1, h2, h3, h4, h5, h6, .font-sans-header {
+    font-family: var(--font-header), sans-serif;
+  }
+  code, pre, .font-mono {
+    font-family: var(--font-mono), monospace !important;
+  }
+  html {
+    scroll-behavior: smooth;
+  }
+}
+
+/* ════════════════════════════════
+   ULTRA-PREMIUM GLASSMORPHISM
+   ════════════════════════════════ */
+.glass-panel {
+  background: rgba(8, 8, 12, 0.7);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  box-shadow: 
+    0 10px 40px rgba(0, 0, 0, 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+.glass-panel-glow-emerald {
+  background: rgba(8, 12, 10, 0.75);
+  backdrop-filter: blur(16px);
+  border: 1px solid rgba(34, 197, 94, 0.15);
+  box-shadow: 
+    0 0 40px rgba(34, 197, 94, 0.06),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+/* ════════════════════════════════
+   SLEEK SAAS BUTTONS (No retro blocks)
+   ════════════════════════════════ */
+.modern-btn-primary {
+  position: relative;
+  background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
+  color: #000;
+  font-weight: 700;
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 4px 14px rgba(34, 197, 94, 0.3);
+}
+.modern-btn-primary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(34, 197, 94, 0.45);
+  filter: brightness(1.08);
+}
+.modern-btn-primary:active {
+  transform: translateY(0);
+}
+
+.modern-btn-secondary {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  color: #fff;
+  font-weight: 600;
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.modern-btn-secondary:hover {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.12);
+  transform: translateY(-2px);
+}
+.modern-btn-secondary:active {
+  transform: translateY(0);
+}
+
+/* ════════════════════════════════
+   GLOWING OBSIDIAN CRAFTING SLOTS
+   ════════════════════════════════ */
+.obsidian-slot {
+  background: rgba(4, 4, 6, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.03);
+  box-shadow: 
+    inset 0 2px 8px rgba(0, 0, 0, 0.8),
+    0 1px 0 rgba(255, 255, 255, 0.02);
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.obsidian-slot-active {
+  border-color: rgba(34, 197, 94, 0.3);
+  box-shadow: 
+    inset 0 2px 8px rgba(0, 0, 0, 0.6),
+    0 0 20px rgba(34, 197, 94, 0.15);
+  background: rgba(34, 197, 94, 0.01);
+}
+
+/* ════════════════════════════════
+   INTERACTIVE LIVE SERVER CONSOLE
+   ════════════════════════════════ */
+.console-container {
+  background: #040407;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
+}
+
+/* ════════════════════════════════
+   FINE SAAS GRID BG
+   ════════════════════════════════ */
+.saas-grid {
+  background-image: 
+    linear-gradient(rgba(255, 255, 255, 0.015) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.015) 1px, transparent 1px);
+  background-size: 32px 32px;
+}
+
+/* ════════════════════════════════
+   PREMIUM ENCHANT SHIMMER
+   ════════════════════════════════ */
+@keyframes enchantShimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+.enchant-text {
+  background: linear-gradient(90deg,
+    #a855f7 0%, #22c55e 25%, #a855f7 50%, #22c55e 75%, #a855f7 100%);
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: enchantShimmer 6s linear infinite;
+}
+
+/* Text glow HSL presets */
+.glow-green {
+  text-shadow: 0 0 20px rgba(34,197,94,0.25);
+}
+.glow-purple {
+  text-shadow: 0 0 20px rgba(168,85,247,0.25);
+}
+
+/* ════════════════════════════════
+   CUSTOM SCROLLBAR
+   ════════════════════════════════ */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #030307;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(34, 197, 94, 0.2);
+}
+
+/* ════════════════════════════════
+   CARD HOVER LIFT ANIMATION
+   ════════════════════════════════ */
+.card-lift {
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.card-lift:hover {
+  transform: translateY(-4px);
+  border-color: rgba(255, 255, 255, 0.1);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.3);
 }

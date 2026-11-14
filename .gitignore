@@ -1,32 +1,58 @@
-# dependencies
+# Dependencies
 /node_modules
 /.pnp
 .pnp.js
 
-# testing
+# Testing
 /coverage
 
-# next.js
+# Next.js & build outputs
 /.next/
 /out/
-
-# production
 /build
+.vercel
 
-# misc
-.DS_Store
+# Environment & credentials
+.env
+.env.*
+!.env.local.example
+!.env.example
 *.pem
+*.key
 
-# debug
+# Databases
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+
+# Logs
+*.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
-# local env files
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
+# Temporary compiler output & scratch space
+/scratch
+/scratch/
 
-# vercel
-.vercel
+# Private agent state & editor config
+/.claude
+/.claude/
+/.claude-flow
+/.swarm
+.mcp.json
+CLAUDE.md
+.vscode/
+.idea/
+
+# Internal planning & prompt documents
+CIY_ANTIGRAVITY_PROMPT.md
+CIY_MASTER_PLAN.md
+LAUNCH_CHECKLIST.md
+
+# OS files
+.DS_Store
+Thumbs.db
